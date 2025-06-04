@@ -12,5 +12,5 @@ do
   NAME=$(echo $line | awk -F' ' '{print $1}')
   CPU=$(echo $line | awk -F' ' '{print $2}')
   MEMORY=$(echo $line | awk -F' ' '{print $3}')
-  echo "$NAME, $CPU, $MEMORY"
+  echo "$RESOURCE_TYPE, $NAMESPACE, $NAME, $CPU, $MEMORY"
 done
