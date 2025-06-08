@@ -1,0 +1,71 @@
+                                                                        
+apiVersion: v1                                                            
+kind: Pod                                                                 
+metadata:                                                                 
+  name: app-volume-enhanced                                               
+  labels:                                                                 
+    app: kuard                                                            
+    environment: demo                                                     
+    tier: frontend                                                        
+spec:                                                                     
+  # Pod-level security context for applying settings to all containers    
+  securityContext:                                                        
+    runAsNonRoot: true # Ensures containers don't run as root             
+    runAsUser: 1001 # All containers run as this user ID                  
+    runAsGroup: 1001 # All containers run as this group ID                
+    fsGroup: 1001 # Makes volume mounts writable by the specified group   
+    seccompProfile:                                                       
+      type: RuntimeDefault # Applies default seccomp profile for better security                                                                    
+  containers:                                                             
+  - name: app                                                             
+    image: gcr.io/kuar-demo/kuard-amd64:1 # Specific image tag            
+    imagePullPolicy: IfNotPresent # Explicitly set image pull policy      
+    ports:                                                                
+    - containerPort: 8080                                                 
+      name: http                                                          
+      protocol: TCP                                                       
+    # Container-level security context for fine-grained control           
+    securityContext:                                                      
+      allowPrivilegeEscalation: false # Prevents privilege escalation     
+      capabilities:                                                       
+        drop:                                                             
+        - ALL # Drops all Linux capabilities, add back specific ones if needed                                                                      
+      # readOnlyRootFilesystem: true # Makes the container's root filesystem read-only                                                        
+                                     # The /data volumeMount will still be writable.                                                                   
+                                     # Ensure your app does not need to write to other rootfs paths like /tmp.                                      
+                                     # If it does, you might need to set this to false or add other emptyDir mounts for writable paths.              
+    # Resource requests and limits for better scheduling and resource management                                                                  
+    resources:                                                            
+      requests:                                                           
+        cpu: "100m" # Request 0.1 CPU core                                
+        memory: "128Mi" # Request 128 MiB of memory                       
+      limits:                                                             
+        cpu: "200m" # Limit to 0.2 CPU core                               
+        memory: "256Mi" # Limit to 256 MiB of memory                      
+    # Liveness probe to check if the application is running               
+    livenessProbe:                                                        
+      httpGet:                                                            
+        path: /healthy                                                    
+        port: http # Use named port for clarity                           
+      initialDelaySeconds: 10 # Increased initial delay slightly          
+      timeoutSeconds: 1                                                   
+      periodSeconds: 10                                                   
+      failureThreshold: 3                                                 
+    # Readiness probe to check if the application is ready to serve traffic                                                                     
+    readinessProbe:                                                       
+      httpGet:                                                            
+        path: /ready                                                      
+        port: http # Use named port                                       
+      initialDelaySeconds: 5 # More conservative initial delay than 0     
+      periodSeconds: 5   # Consider a slightly longer period if 2s is too frequent                                                                    
+      timeoutSeconds: 1                                                   
+      failureThreshold: 3                                                 
+      successThreshold: 1                                                 
+    volumeMounts:                                                         
+    - mountPath: "/data" # Path inside the container where the volume is mounted                                                                     
+      name: "app-data"   # Name of the volume mount, must match a volume defined below                                                               
+  volumes:                                                                
+  - name: "app-data" # Name of the volume                                 
+    emptyDir: {}      # Using emptyDir for ephemeral storage.             
+                      # Data in this volume is lost when the Pod is deleted.                                                                    
+                      # For persistent storage, consider using a PersistentVolumeClaim.                         

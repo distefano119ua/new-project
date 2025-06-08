@@ -1,0 +1,89 @@
+                                                                        
+apiVersion: batch/v1                                                      
+kind: Job                                                                 
+metadata:                                                                 
+  name: app-job                                                           
+spec:                                                                     
+  # Best Practice: Allow for a few retries for transient issues.          
+  backoffLimit: 3                                                         
+  template:                                                               
+    spec:                                                                 
+      # Best Practice: Define a security context for the pod.             
+      # Ensures containers run as non-root and mounted volumes are group-writable.                                                                   
+      securityContext:                                                    
+        runAsNonRoot: true                                                
+        runAsUser: 1001    # Example non-root user ID.                    
+        fsGroup: 1001      # Ensures the user can write to volumes.       
+      volumes:                                                            
+      # Best Practice: Use PersistentVolumeClaim for input data.          
+      # Assumes 'data-input-pvc' is pre-configured and bound.             
+      - name: data-input                                                  
+        persistentVolumeClaim:                                            
+          claimName: data-input-pvc                                       
+      # Best Practice: Use PersistentVolumeClaim for output data to ensure persistence.                                                                
+      # Assumes 'data-output-pvc' is pre-configured and bound.            
+      - name: data-output                                                 
+        persistentVolumeClaim:                                            
+          claimName: data-output-pvc                                      
+      initContainers:                                                     
+      - name: init                                                        
+        image: google/cloud-sdk:275.0.0-alpine # Using a specific version tag is good.                                                                
+        command:                                                          
+        - /bin/sh                                                         
+        - -c                                                              
+        - gsutil -m rsync -dr gs://glow-sportradar/ /data/input && echo "Init container: Data sync complete."
+        volumeMounts:                                                     
+        - name: data-input                                                
+          mountPath: /data/input # Data downloaded here will be on the PVC.
+        # Best Practice: Define resource requests and limits.             
+        resources:                                                        
+          requests:                                                       
+            memory: "128Mi"                                               
+            cpu: "250m"                                                   
+          limits:                                                         
+            memory: "256Mi"                                               
+            cpu: "500m"                                                   
+        # Best Practice: Container-level security context.                
+        securityContext:                                                  
+          allowPrivilegeEscalation: false                                 
+          # readOnlyRootFilesystem: true # Set to true if gsutil and image allow; otherwise false.                                                     
+                                         # For gsutil, it might need to write to /tmp or ~/.gsutil                                                  
+          capabilities:                                                   
+            drop: ["ALL"]                                                 
+      containers:                                                         
+      - name: processor                                                   
+        image: glowtools/soccer:latest-4e4254a # Ensure this is an immutable tag or use a digest.                                              
+        # Modified command to reflect some action and log output.         
+        command: ["/bin/sh", "-c", "echo 'Processor: Listing input data...' && ls -l /data/input && echo 'Processor: Main task finished.'"]           
+        lifecycle:                                                        
+          postStart:                                                      
+            exec:                                                         
+              # Message now written to persistent 'data-input' volume.    
+              command: ["/bin/sh", "-c", "echo 'Processor container started, postStart hook executed.' > /data/input/processor_postStart.log"]  
+          preStop:                                                        
+            exec:                                                         
+              # Message now written to persistent 'data-output' volume.   
+              command: ["/bin/sh", "-c", "echo 'Processor container stopping, preStop hook executed. Performing cleanup...' > /data/output/processor_preStop.log && sleep 5"] # Example cleanup           
+        volumeMounts:                                                     
+        - name: data-input                                                
+          mountPath: /data/input                                          
+          readOnly: true # If processor only reads from input, set to readOnly.                                                                   
+        - name: data-output                                               
+          mountPath: /data/output # Output data written here will be on the PVC.                                                                    
+        # Best Practice: Define resource requests and limits.             
+        resources:                                                        
+          requests:                                                       
+            memory: "256Mi"                                               
+            cpu: "500m"                                                   
+          limits:                                                         
+            memory: "512Mi"                                               
+            cpu: "1"                                                      
+        # Best Practice: Container-level security context.                
+        securityContext:                                                  
+          allowPrivilegeEscalation: false                                 
+          readOnlyRootFilesystem: true # If application allows. Writes should go to mounted volumes.                                               
+          capabilities:                                                   
+            drop: ["ALL"]                                                 
+      # Best Practice: 'Never' is appropriate for idempotent Jobs where 'backoffLimit' handles retries.                                             
+      # 'OnFailure' could be used if container-level restarts are desired for certain failures.                                                       
+      restartPolicy: Never

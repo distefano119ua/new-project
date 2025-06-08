@@ -1,0 +1,48 @@
+                                                                             
+apiVersion: v1                                                            
+kind: Pod                                                                 
+metadata:                                                                 
+  name: app-demo-pod # More descriptive name                              
+  labels:                                                                 
+    app.kubernetes.io/name: demo-app                                      
+    app.kubernetes.io/instance: demo-instance-01                          
+    app.kubernetes.io/version: "1.0.0"                                    
+    app.kubernetes.io/component: web                                      
+    app.kubernetes.io/part-of: demo-application                           
+    app.kubernetes.io/managed-by: kubectl-ai                              
+spec:                                                                     
+  # Pod-level security context                                            
+  securityContext:                                                        
+    runAsNonRoot: true  # Ensures containers don't run as root by default 
+    runAsUser: 1001       # Example non-root user ID                      
+    runAsGroup: 1001      # Example non-root group ID                     
+    fsGroup: 1001         # Ensures the volume mounts are writable by the runAsGroup                                                                  
+  seccompProfile:                                                       
+    type: RuntimeDefault # Use the runtime's default seccomp profile    
+containers:                                                             
+  - name: app-container # More descriptive container name               
+    image: gcr.io/k8s-k3s/demo:v1.0.0 # Consider scanning this image for vulnerabilities                                                             
+    ports:                                                              
+      - name: http                                                      
+        containerPort: 8000                                             
+        protocol: TCP # Explicitly state protocol                       
+    resources:                                                          
+      # Define resource requests and limits                             
+      # These are EXAMPLE values. Adjust them based on your application's needs.                                                        
+        requests:                                                         
+          cpu: "100m" # 0.1 CPU core                                      
+          memory: "128Mi" # 128 Mebibytes                                 
+        limits:                                                           
+          cpu: "200m" # 0.2 CPU core                                      
+          memory: "256Mi" # 256 Mebibytes                                 
+    securityContext:                                                    
+        allowPrivilegeEscalation: false # Prevent privilege escalation    
+        capabilities:                                                     
+          drop:                                                           
+            - ALL # Drop all Linux capabilities                           
+        # Ensure your application can run with a read-only root filesystem.
+        # If it needs to write to specific paths, use emptyDir or other volume types for those paths.                                               
+        readOnlyRootFilesystem: true                                      
+        # runAsUser, runAsGroup are inherited from Pod's securityContext if not specified here,                                                      
+        # but can be overridden per container if needed.                  
+        # runAsNonRoot: true # Inherited from Pod securityContext 

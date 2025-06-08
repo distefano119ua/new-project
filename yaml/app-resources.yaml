@@ -1,0 +1,51 @@
+                                                                          
+apiVersion: v1                                                            
+kind: Pod                                                                 
+metadata:                                                                 
+  name: app-resource                                                      
+  labels:                                                                 
+    app: kuard-demo # Example label                                       
+    environment: development # Example label                              
+spec:                                                                     
+  securityContext: # Pod-level security context                           
+    runAsNonRoot: true # Ensures containers don't run as root             
+    runAsUser: 65534   # Runs containers as 'nobody' user (a common non-privileged UID)                                                             
+    runAsGroup: 65534  # Runs containers as 'nogroup' group               
+    fsGroup: 65534     # Ensures file system group is also non-privileged 
+    seccompProfile:                                                       
+      type: RuntimeDefault # Applies default seccomp profile for enhanced security                                                                    
+  containers:                                                             
+  - image: gcr.io/kuar-demo/kuard-amd64:1 # Consider using a more specific image digest in production                                                  
+    name: app                                                             
+    securityContext: # Container-level security context                   
+      allowPrivilegeEscalation: false # Prevents the container from gaining more privileges                                                     
+      capabilities:                                                       
+        drop:                                                             
+          - ALL # Drops all Linux capabilities, add back specific ones if needed                                                                      
+    livenessProbe:                                                        
+      httpGet:                                                            
+        path: /healthy                                                    
+        port: 8080                                                        
+      initialDelaySeconds: 15 # Increased initial delay to allow app to start                                                                       
+      timeoutSeconds: 3    # Increased timeout for more resilience        
+      periodSeconds: 10                                                   
+      failureThreshold: 3                                                 
+    readinessProbe:                                                       
+      httpGet:                                                            
+        path: /ready                                                      
+        port: 8080                                                        
+      initialDelaySeconds: 5  # Added initial delay for readiness         
+      timeoutSeconds: 2    # Added a timeout for readiness probe          
+      periodSeconds: 5     # Slightly increased period for less aggressive probing                                                                     
+      failureThreshold: 3                                                 
+      successThreshold: 1                                                 
+    ports:                                                                
+    - containerPort: 8080                                                 
+      name: http                                                          
+    resources:                                                            
+      requests:                                                           
+        cpu: "100m"                                                       
+        memory: "128Mi"                                                   
+      limits:                                                             
+        cpu: "250m" # Reduced CPU limit for a more balanced request/limit ratio                                                                       
+        memory: "256Mi"

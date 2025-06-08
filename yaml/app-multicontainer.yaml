@@ -1,0 +1,104 @@
+                                                                          
+apiVersion: v1                                                            
+kind: Pod                                                                 
+metadata:                                                                 
+  name: app-two-containers-v2                                             
+  labels:                                                                 
+    app: app-two-containers                                               
+    environment: development                                              
+spec:                                                                     
+  # Pod-level security context: run all containers as non-root user 1001, group 1001                                                                  
+  # and ensure the shared volume is accessible by this group.             
+  securityContext:                                                        
+    runAsNonRoot: true                                                    
+    runAsUser: 1001                                                       
+    runAsGroup: 1001                                                      
+    fsGroup: 1001                                                         
+    fsGroupChangePolicy: "OnRootMismatch" # Ensures fsGroup permissions are applied                                                                 
+  volumes:                                                                
+  - name: shared-html                                                     
+    emptyDir: {}                                                          
+  containers:                                                             
+  - name: nginx-webserver                                                 
+    image: nginx:1.25.4-alpine # Specific image version                   
+    ports:                                                                
+    - containerPort: 80                                                   
+      name: http                                                          
+      protocol: TCP                                                       
+    volumeMounts:                                                         
+    - name: shared-html                                                   
+      mountPath: /usr/share/nginx/html                                    
+      readOnly: true # Nginx only needs to read from this volume          
+    resources:                                                            
+      requests:                                                           
+        cpu: "100m" # 0.1 CPU core                                        
+        memory: "128Mi"                                                   
+      limits:                                                             
+        cpu: "200m" # 0.2 CPU core                                        
+        memory: "256Mi"                                                   
+    securityContext:                                                      
+      allowPrivilegeEscalation: false                                     
+      capabilities:                                                       
+        drop:                                                             
+        - ALL                                                             
+      readOnlyRootFilesystem: true                                        
+    livenessProbe:                                                        
+      tcpSocket:                                                          
+        port: 80                                                          
+      initialDelaySeconds: 15                                             
+      periodSeconds: 20                                                   
+      failureThreshold: 3                                                 
+    readinessProbe:                                                       
+      httpGet:                                                            
+        path: /index.html # Check the actual content page                 
+        port: 80                                                          
+      initialDelaySeconds: 5  # Allow content-updater to create index.html
+      periodSeconds: 10                                                   
+      failureThreshold: 3                                                 
+      successThreshold: 1                                                 
+                                                                          
+  - name: content-updater                                                 
+    image: debian:12-slim # Specific image version                        
+    volumeMounts:                                                         
+    - name: shared-html                                                   
+      mountPath: /html # Debian container writes here                     
+    # Updated command to also touch a health check file                   
+    command: ["/bin/sh", "-c"]                                            
+    args:                                                                 
+      - |                                                                 
+        apk add --no-cache coreutils # For `touch` and `date` with more options if needed. `find` is part of busybox in alpine.                     
+                                     # For debian: apt-get update && apt-get install -y coreutils procps && rm -rf /var/lib/apt/lists/*              
+                                     # Minimal debian:                    
+                                     # while true; do date >> /html/index.html; touch /html/healthz; sleep 1; done                                    
+                                     # Using busybox which is likely in debian:slim                                                                 
+        echo "Updating content and health signal every second..."         
+        while true; do                                                    
+          echo "Timestamp: $(date)" >> /html/index.html;                  
+          # Update a dedicated file for the liveness probe touch /html/healthz; sleep 1;                                                        
+        done                                                              
+    resources:                                                            
+      requests:                                                           
+        cpu: "50m"                                                        
+        memory: "64Mi"                                                    
+      limits:                                                             
+        cpu: "100m"                                                       
+        memory: "128Mi"                                                   
+    securityContext:                                                      
+      allowPrivilegeEscalation: false                                     
+      capabilities:                                                       
+        drop:                                                             
+        - ALL                                                             
+      readOnlyRootFilesystem: true # Writes only to the mounted volume /html                                                                       
+    livenessProbe:                                                        
+      exec:                                                               
+        # Checks if the healthz file has been touched in the last 10 seconds                                                                     
+        # Requires `find` to be available in the debian:slim image (it usually is via busybox)                                                     
+        command:                                                          
+        - /bin/sh                                                         
+        - -c                                                              
+        - "if [ -f /html/healthz ]; then test $(find /html/healthz - newermt '-10 seconds'); else exit 1; fi"                                    
+      initialDelaySeconds: 10 # Allow script to start and create/touch the file                                                                        
+      periodSeconds: 10       # Check every 10 seconds                    
+      failureThreshold: 3     # Consider unhealthy after 3 consecutive failures                                                                    
+      timeoutSeconds: 5                                                   
+  restartPolicy: Always 

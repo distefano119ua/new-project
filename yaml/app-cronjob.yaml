@@ -1,0 +1,41 @@
+                                                                         
+apiVersion: batch/v1                                                      
+kind: CronJob                                                             
+metadata:                                                                 
+  name: app-cronjob                                                       
+spec:                                                                     
+  schedule: "*/5 * * * *"                                                 
+  concurrencyPolicy: Forbid # Prevents concurrent runs                    
+  startingDeadlineSeconds: 60 # Job must start within 60s of scheduled time                                                                        
+  successfulJobsHistoryLimit: 3 # Keep history of 3 successful jobs       
+  failedJobsHistoryLimit: 1    # Keep history of 1 failed job             
+  jobTemplate:                                                            
+    spec:                                                                 
+      template:                                                           
+        spec:                                                             
+          securityContext:                                                
+            runAsNonRoot: true                                            
+            runAsUser: 1000                                               
+            runAsGroup: 1000                                              
+            fsGroup: 1000                                                 
+          containers:                                                     
+          - name: hello                                                   
+            image: busybox:latest # Using a minimal, common image         
+            command:                                                      
+            - "/bin/sh"                                                   
+            - "-c"                                                        
+            - "echo Hello world from Kubernetes CronJob!"                 
+            resources:                                                    
+              requests:                                                   
+                memory: "64Mi"                                            
+                cpu: "100m" # 0.1 CPU                                     
+              limits:                                                     
+                memory: "128Mi"                                           
+                cpu: "200m" # 0.2 CPU                                     
+            securityContext:                                              
+              allowPrivilegeEscalation: false                             
+              capabilities:                                               
+                drop:                                                     
+                - ALL                                                     
+              readOnlyRootFilesystem: true                                
+          restartPolicy: OnFailure                   
